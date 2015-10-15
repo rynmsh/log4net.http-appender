@@ -9,7 +9,7 @@
     using System.Web;
     using log4net.Appender;
     using log4net.Core;
-    using Newtonsoft.Json;
+    using System.Web.Script.Serialization;
 
     public class AsyncBatchHttpAppender : AppenderSkeleton
     {
@@ -146,7 +146,7 @@
                         });
                     }
 
-                    var json = JsonConvert.SerializeObject(list);
+                    var json = new JavaScriptSerializer().Serialize(list);
 
                     // Add headers required to submit request and additional data
                     client.Headers.Add("X-ProjectKey", ProjectKey);

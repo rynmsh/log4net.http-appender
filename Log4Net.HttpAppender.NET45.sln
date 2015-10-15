@@ -15,6 +15,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "misc", "misc", "{31B705EB-6
 		README.md = README.md
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{EC836411-D0A1-4F6D-8D33-7F21FD803DCC}"
+	ProjectSection(SolutionItems) = preProject
+		examples\AsyncBatchHttpAppender.config = examples\AsyncBatchHttpAppender.config
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
