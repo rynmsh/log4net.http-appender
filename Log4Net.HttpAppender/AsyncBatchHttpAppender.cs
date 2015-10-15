@@ -121,6 +121,9 @@
                     {
                         var meta = new DropoffMeta { user = le.Identity, logger = le.LoggerName, time_stamp = le.TimeStamp };
 
+                        if (null != le.ExceptionObject && !string.IsNullOrWhiteSpace(le.ExceptionObject.StackTrace))
+                            meta.stack_trace = le.ExceptionObject.StackTrace;
+
                         if (le.Level.Name.ToLower() == "error")
                         {
                             if (null != HttpContext.Current)
@@ -217,5 +220,6 @@
         public string logger { get; set; }
         public DateTime time_stamp { get; set; }
         public dynamic http { get; set; }
+        public string stack_trace { get; set; }
     }
 }
