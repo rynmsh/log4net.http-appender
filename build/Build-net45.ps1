@@ -1,4 +1,4 @@
-$PACKAGE_VERSION = "0.0.5"
+$PACKAGE_VERSION = "0.0.6"
 
 # Build solution
 $slnPath = "..\Log4Net.HttpAppender.NET45.sln"

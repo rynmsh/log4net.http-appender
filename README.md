@@ -10,3 +10,8 @@ Configuration
 ===
 
 /samples has example config for the appenders
+
+NuGet
+===
+
+Package deployed to https://www.nuget.org/packages/Log4Net.HttpAppender/
