@@ -5,3 +5,8 @@ Provides async logging to an http endpoint, log entries are queued and posted in
 batch max value, to prevent overly chunky requests. 
 
 Thread sleeps after processing for 200ms then rechecks the queue. 
+
+Configuration
+===
+
+/samples has example config for the appenders
