@@ -153,7 +153,7 @@
 
                     // Add headers required to submit request and additional data
                     client.Headers.Add("X-ProjectKey", ProjectKey);
-                    client.Headers.Add("X-Environment", Environment);
+                    client.Headers.Add("X-Environment", Environment ?? System.Environment.MachineName);
 
                     // Set content type and encoding
                     client.Headers.Add("Content-Type", "application/json; charset=utf-8");

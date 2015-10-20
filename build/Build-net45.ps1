@@ -1,4 +1,5 @@
-$PACKAGE_VERSION = "0.0.6"
+$PACKAGE_VERSION = "0.0.7"
+$PACKAGE_LOCAL_PATH = $null
 
 # Build solution
 $slnPath = "..\Log4Net.HttpAppender.NET45.sln"
@@ -29,14 +30,21 @@ $packedFile = "Log4Net.HttpAppender.$PACKAGE_VERSION.nupkg"
 try {
   # create the package file
   nuget pack "$tempDirectory\package.nuspec" -version $PACKAGE_VERSION
+  
+  # create local package if $PACKAGE_LOCAL has a value set
+  if ($PACKAGE_LOCAL_PATH) {
+    Move-Item $packedFile "$PACKAGE_LOCAL_PATH\$packedFile"
+  }
 
-  # now upload package
-  nuget push $packedFile
+  # otherwise push to nuget.org
+  else {
+    nuget push $packedFile
+  }
 }
 finally {
   # remove local package
   if (test-path($packedFile)) {
-	remove-item $packedFile -Force
+    remove-item $packedFile -Force
   }
 
   # cleanup
