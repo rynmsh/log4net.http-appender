@@ -18,10 +18,11 @@
         private readonly ManualResetEvent manualResetEvent;
         private bool onClosing;
 
-        /// Configuration values (set in appender config)
+        // Configuration values (set in appender config)
         public string ServiceUrl { get; set; }
         public string ProjectKey { get; set; }
         public string Environment { get; set; }
+        public int BatchMaxSize { get; set; }
 
         public AsyncBatchHttpAppender()
         {
@@ -65,23 +66,23 @@
             {
                 LoggingEvent loggingEvent;
 
-                var batch = new List<LoggingEvent>();
-                int count = 0, max = 20;
+                var queuedLoggingEvents = new List<LoggingEvent>();
+                int count = 0, max = BatchMaxSize > 0 ? BatchMaxSize : 40;
 
                 while (deQueue(out loggingEvent))
                 {
                     if (count == max) break;
-                    batch.Add(loggingEvent);
+                    queuedLoggingEvents.Add(loggingEvent);
                     count++;
                 }
 
-                if (batch.Any())
+                if (queuedLoggingEvents.Any())
                 {
-                    Debug.WriteLine("++" + batch.Count + " EVENTS TO PUBLISH++");
+                    Debug.WriteLine("++" + queuedLoggingEvents.Count + " EVENTS TO PUBLISH++");
 
                     try
                     {
-                        sendBatch(batch);
+                        processQueuedLoggingEvents(queuedLoggingEvents);
                     }
                     catch (Exception e)
                     {
@@ -108,48 +109,19 @@
             manualResetEvent.Set();
         }
 
-        private void sendBatch(IEnumerable<LoggingEvent> batch)
+        private void processQueuedLoggingEvents(IEnumerable<LoggingEvent> queuedLoggingEvents)
         {
             using (var client = new WebClient())
             {
                 var start = DateTime.Now;
                 try
                 {
-                    var list = new List<dynamic>();
+                    var loggingMessagesToSend = new List<dynamic>();
 
-                    foreach (var le in batch)
-                    {
-                        var meta = new DropoffMeta { user = le.Identity, logger = le.LoggerName, time_stamp = le.TimeStamp };
+                    foreach (var loggingEvent in queuedLoggingEvents)
+                        loggingMessagesToSend.Add(createLoggingEventModel(loggingEvent));
 
-                        if (null != le.ExceptionObject && !string.IsNullOrWhiteSpace(le.ExceptionObject.StackTrace))
-                            meta.stack_trace = le.ExceptionObject.StackTrace;
-
-                        if (le.Level.Name.ToLower() == "error")
-                        {
-                            if (null != HttpContext.Current)
-                            {
-                                var headers = new List<dynamic>();
-
-                                foreach (var headerKey in HttpContext.Current.Request.Headers.AllKeys)
-                                {
-                                    var value = HttpContext.Current.Request.Headers[headerKey];
-                                    if (!string.IsNullOrWhiteSpace(value))
-                                        headers.Add(new { key = headerKey, value });
-                                }
-
-                                meta.http = new { request_headers = headers };
-                            }
-                        }
-
-                        list.Add(new
-                        {
-                            level = le.Level.Name.ToLower(),
-                            message = le.RenderedMessage,
-                            meta
-                        });
-                    }
-
-                    var json = new JavaScriptSerializer().Serialize(list);
+                    var json = new JavaScriptSerializer().Serialize(loggingMessagesToSend);
 
                     // Add headers required to submit request and additional data
                     client.Headers.Add("X-ProjectKey", ProjectKey);
@@ -161,7 +133,7 @@
 
                     // up the payload
                     client.UploadString(ServiceUrl, "POST", json);
-                    Debug.WriteLine("Sent collection of events: " + list.Count);
+                    Debug.WriteLine("Sent collection of events: " + loggingMessagesToSend.Count);
                 }
                 catch (WebException ex)
                 {
@@ -173,6 +145,57 @@
                     Debug.WriteLine("Took " + ((DateTime.Now) - start).TotalMilliseconds + "ms to submit");
                 }
             }
+        }
+
+        private LoggingEventModel createLoggingEventModel(LoggingEvent loggingEvent)
+        {
+            var loggingEventModel = new LoggingEventModel
+            {
+                user = string.IsNullOrWhiteSpace(loggingEvent.Identity) ? null : loggingEvent.Identity,
+                logger = loggingEvent.LoggerName,
+                level = loggingEvent.Level.Name.ToLower(),
+                message = loggingEvent.RenderedMessage,
+                time_stamp = loggingEvent.TimeStamp.ToUniversalTime().ToString("u")
+            };
+
+            // Grab stack trace
+            if (null != loggingEvent.ExceptionObject && !string.IsNullOrWhiteSpace(loggingEvent.ExceptionObject.StackTrace))
+                loggingEventModel.stack_trace = loggingEvent.ExceptionObject.StackTrace;
+
+            // For errors attach additional information to provide greater insight into the context in
+            // which the exception happened i.e. cookie values
+            if (loggingEvent.Level.Name.ToLower() == "error" || loggingEvent.Level.Name.ToLower() == "fatal")
+            {
+                // attach http data
+                if (null != HttpContext.Current)
+                {
+                    var context = HttpContext.Current;
+
+                    // attach headers
+                    var headers = new List<dynamic>();
+                    foreach (var headerKey in context.Request.Headers.AllKeys)
+                    {
+                        var value = context.Request.Headers[headerKey];
+                        if (!string.IsNullOrWhiteSpace(value))
+                            headers.Add(new { key = headerKey, value });
+                    }
+
+                    loggingEventModel.http = new
+                    {
+                        url = context.Request.Url,
+                        url_referrer = context.Request.UrlReferrer,
+                        user_agent = context.Request.UserAgent,
+                        user_host_address = context.Request.UserHostAddress,
+                        user_host_name = context.Request.UserHostName,
+                        http_method = context.Request.HttpMethod,
+                        current_user = string.IsNullOrWhiteSpace(context.User.Identity.Name) ? null : context.User.Identity.Name,
+                        authentication_type = string.IsNullOrWhiteSpace(context.User.Identity.AuthenticationType) ? null : context.User.Identity.AuthenticationType,
+                        request_headers = headers.Count > 0 ? headers : null
+                    };
+                }
+            }
+
+            return loggingEventModel;
         }
 
         private void enqueue(LoggingEvent loggingEvent)
@@ -214,12 +237,14 @@
         }
     }
 
-    public class DropoffMeta
+    public class LoggingEventModel
     {
         public string user { get; set; }
         public string logger { get; set; }
-        public DateTime time_stamp { get; set; }
-        public dynamic http { get; set; }
+        public string level { get; set; }
+        public string message { get; set; }
         public string stack_trace { get; set; }
+        public string time_stamp { get; set; }
+        public dynamic http { get; set; }
     }
 }
