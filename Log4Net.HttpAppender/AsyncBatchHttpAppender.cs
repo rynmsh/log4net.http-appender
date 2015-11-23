@@ -23,6 +23,7 @@
         public string ProjectKey { get; set; }
         public string Environment { get; set; }
         public int BatchMaxSize { get; set; }
+        public int BatchSleepTime { get; set; }
 
         public AsyncBatchHttpAppender()
         {
@@ -73,6 +74,7 @@
                 {
                     if (count == max) break;
                     queuedLoggingEvents.Add(loggingEvent);
+                    Debug.WriteLine("Dequeued " + loggingEvent.RenderedMessage);
                     count++;
                 }
 
@@ -100,8 +102,9 @@
                 if (onClosing) break;
 
                 // if they are no pending tasks sleep 10 seconds and try again
-                Thread.Sleep(200);
-                Debug.WriteLine("Sleeping for 100ms");
+                var batchSleepTime = BatchSleepTime == 0 ? 200 : BatchSleepTime;
+                Thread.Sleep(batchSleepTime);
+                Debug.WriteLine("Sleeping for " + batchSleepTime + "ms");
             }
 
             // we are done with our logging, sent the signal to the parent thread
@@ -202,6 +205,7 @@
         {
             lock (lockObject)
             {
+                Debug.WriteLine("Enqued " + loggingEvent.MessageObject);
                 pendingTasks.Enqueue(loggingEvent);
             }
         }
