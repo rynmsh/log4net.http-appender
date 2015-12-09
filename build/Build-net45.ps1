@@ -1,4 +1,4 @@
-$PACKAGE_VERSION = "0.0.16"
+$PACKAGE_VERSION = "0.0.1"
 $PACKAGE_LOCAL_PATH = $null
 
 # Build solution
@@ -25,7 +25,7 @@ copy-item "$srcDirectory\package.nuspec" "$tempDirectory\package.nuspec"
 # copy the assemblies to the correct paths
 copy-item "$srcDirectory\bin\Release\Log4Net.HttpAppender.dll" "$tempDirectory\lib\net40\Log4Net.HttpAppender.dll"
 
-$packedFile = "Log4Net.HttpAppender.$PACKAGE_VERSION.nupkg"
+$packedFile = "Log4Net-1.2.10.HttpAppender.$PACKAGE_VERSION.nupkg"
 
 try {
   # create the package file
