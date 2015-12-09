@@ -74,4 +74,4 @@ Configuration
 NuGet
 ===
 
-https://www.nuget.org/packages/Log4Net.HttpAppender/
+https://www.nuget.org/packages/Log4Net-1.2.10.HttpAppender/
