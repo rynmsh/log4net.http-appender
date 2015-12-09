@@ -8,7 +8,9 @@
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <projectUrl>https://github.com/rynmsh/log4net.http-appender</projectUrl>
     <description>
-      Log4net async http appender
+      Log4net async http appender (for log4net > 2.0.4). 
+      
+      This package has changed a lot so please check the readme on github
     </description>
     <tags>log4net appender http</tags>
     <dependencies>

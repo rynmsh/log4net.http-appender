@@ -1,4 +1,4 @@
-$PACKAGE_VERSION = "0.0.16"
+$PACKAGE_VERSION = "0.1.0"
 $PACKAGE_LOCAL_PATH = $null
 
 # Build solution
