@@ -17,16 +17,22 @@
         private readonly object _lockObject = new object();
         private readonly ManualResetEvent _manualResetEvent;
         private bool _onClosing;
+        private readonly string[] _logHttpForLevels;
 
         // Configuration values (set in appender config)
         public string ServiceUrl { get; set; }
         public string ProjectKey { get; set; }
         public string Environment { get; set; }
+        public string LogHttpForLevels { get; set; }
         public int BatchMaxSize { get; set; }
         public int BatchSleepTime { get; set; }
 
         public AsyncBatchHttpAppender()
         {
+            _logHttpForLevels = string.IsNullOrWhiteSpace(LogHttpForLevels)
+                ? new[] { "error", "fatal", "warn" } 
+                : LogHttpForLevels.Split(',').Select(x => x.ToLower().Trim()).ToArray();
+
             //initialize our queue
             _queue = new Queue<LoggingEventModel>();
 
@@ -176,7 +182,7 @@
                 var headers = new List<dynamic>();
                 var formParams = new List<dynamic>();
 
-                if (loggingEvent.Level.Name.ToLower() == "error" || loggingEvent.Level.Name.ToLower() == "fatal")
+                if (_logHttpForLevels.Contains(loggingEvent.Level.Name.ToLower()))
                 {
                     foreach (var headerKey in context.Request.Headers.AllKeys)
                     {
