@@ -13,25 +13,31 @@
 
     public class AsyncBatchHttpAppender : AppenderSkeleton
     {
-        private readonly Queue<LoggingEvent> pendingTasks;
-        private readonly object lockObject = new object();
-        private readonly ManualResetEvent manualResetEvent;
-        private bool onClosing;
+        private readonly Queue<LoggingEventModel> _queue;
+        private readonly object _lockObject = new object();
+        private readonly ManualResetEvent _manualResetEvent;
+        private bool _onClosing;
+        private readonly string[] _logHttpForLevels;
 
         // Configuration values (set in appender config)
         public string ServiceUrl { get; set; }
         public string ProjectKey { get; set; }
         public string Environment { get; set; }
+        public string LogHttpForLevels { get; set; }
         public int BatchMaxSize { get; set; }
         public int BatchSleepTime { get; set; }
 
         public AsyncBatchHttpAppender()
         {
+            _logHttpForLevels = string.IsNullOrWhiteSpace(LogHttpForLevels)
+                ? new[] { "error", "fatal", "warn" } 
+                : LogHttpForLevels.Split(',').Select(x => x.ToLower().Trim()).ToArray();
+
             //initialize our queue
-            pendingTasks = new Queue<LoggingEvent>();
+            _queue = new Queue<LoggingEventModel>();
 
             //put the event initially in non-signalled state
-            manualResetEvent = new ManualResetEvent(false);
+            _manualResetEvent = new ManualResetEvent(false);
 
             //start the asyn process of handling pending tasks
             Start();
@@ -53,7 +59,7 @@
         {
             // hopefully user doesnt open and close the GUI or CONSOLE OR WEBPAGE
             // right away. anyway lets add that condition too
-            if (!onClosing)
+            if (!_onClosing)
             {
                 var thread = new Thread(processMessageQueue);
                 thread.Start();
@@ -63,18 +69,18 @@
         private void processMessageQueue()
         {
             // we keep on processing tasks until shutdown on repository is called
-            while (!onClosing)
+            while (!_onClosing)
             {
-                LoggingEvent loggingEvent;
+                LoggingEventModel loggingEvent;
 
-                var queuedLoggingEvents = new List<LoggingEvent>();
+                var queuedLoggingEvents = new List<LoggingEventModel>();
                 int count = 0, max = BatchMaxSize > 0 ? BatchMaxSize : 40;
 
                 while (deQueue(out loggingEvent))
                 {
                     if (count == max) break;
                     queuedLoggingEvents.Add(loggingEvent);
-                    Debug.WriteLine("Dequeued " + loggingEvent.RenderedMessage);
+                    Debug.WriteLine("Dequeued " + loggingEvent.message);
                     count++;
                 }
 
@@ -99,7 +105,7 @@
                     Debug.WriteLine("++0 EVENTS++");
 
                 // if closing is already initiated break
-                if (onClosing) break;
+                if (_onClosing) break;
 
                 // if they are no pending tasks sleep 10 seconds and try again
                 var batchSleepTime = BatchSleepTime == 0 ? 200 : BatchSleepTime;
@@ -109,10 +115,10 @@
 
             // we are done with our logging, sent the signal to the parent thread
             // so that it can commence shut down
-            manualResetEvent.Set();
+            _manualResetEvent.Set();
         }
 
-        private void processQueuedLoggingEvents(IEnumerable<LoggingEvent> queuedLoggingEvents)
+        private void processQueuedLoggingEvents(IEnumerable<LoggingEventModel> queuedLoggingEvents)
         {
             using (var client = new WebClient())
             {
@@ -122,7 +128,7 @@
                     var loggingMessagesToSend = new List<dynamic>();
 
                     foreach (var loggingEvent in queuedLoggingEvents)
-                        loggingMessagesToSend.Add(createLoggingEventModel(loggingEvent));
+                        loggingMessagesToSend.Add(loggingEvent);
 
                     var json = new JavaScriptSerializer().Serialize(loggingMessagesToSend);
 
@@ -133,6 +139,8 @@
                     // Set content type and encoding
                     client.Headers.Add("Content-Type", "application/json; charset=utf-8");
                     client.Encoding = System.Text.Encoding.UTF8;
+
+                    Debug.Write("Sending JSON data: " + json);
 
                     // up the payload
                     client.UploadString(ServiceUrl, "POST", json);
@@ -165,17 +173,17 @@
             if (null != loggingEvent.ExceptionObject && !string.IsNullOrWhiteSpace(loggingEvent.ExceptionObject.StackTrace))
                 loggingEventModel.stack_trace = loggingEvent.ExceptionObject.StackTrace;
 
-            // For errors attach additional information to provide greater insight into the context in
-            // which the exception happened i.e. cookie values
-            if (loggingEvent.Level.Name.ToLower() == "error" || loggingEvent.Level.Name.ToLower() == "fatal")
+            // Attach additional http request data when available
+            if (null != HttpContext.Current)
             {
-                // attach http data
-                if (null != HttpContext.Current)
-                {
-                    var context = HttpContext.Current;
+                var context = HttpContext.Current;
 
-                    // attach headers
-                    var headers = new List<dynamic>();
+                // For fatal and error attach headers and any form data
+                var headers = new List<dynamic>();
+                var formParams = new List<dynamic>();
+
+                if (_logHttpForLevels.Contains(loggingEvent.Level.Name.ToLower()))
+                {
                     foreach (var headerKey in context.Request.Headers.AllKeys)
                     {
                         var value = context.Request.Headers[headerKey];
@@ -183,19 +191,31 @@
                             headers.Add(new { key = headerKey, value });
                     }
 
-                    loggingEventModel.http = new
+                    if (context.Request.Form.Keys.Count > 0)
                     {
-                        url = context.Request.Url,
-                        url_referrer = context.Request.UrlReferrer,
-                        user_agent = context.Request.UserAgent,
-                        user_host_address = context.Request.UserHostAddress,
-                        user_host_name = context.Request.UserHostName,
-                        http_method = context.Request.HttpMethod,
-                        current_user = string.IsNullOrWhiteSpace(context.User.Identity.Name) ? null : context.User.Identity.Name,
-                        authentication_type = string.IsNullOrWhiteSpace(context.User.Identity.AuthenticationType) ? null : context.User.Identity.AuthenticationType,
-                        request_headers = headers.Count > 0 ? headers : null
-                    };
+                        foreach (var key in context.Request.Form.AllKeys)
+                        {
+                            var value = context.Request.Form[key];
+                            if (!string.IsNullOrWhiteSpace(value))
+                                formParams.Add(new { key, value = context.Request.Form[key] });
+                        }
+                    }
                 }
+
+                loggingEventModel.http = new
+                {
+                    session_id = null != context.Session ? context.Session.SessionID : null,
+                    current_user = string.IsNullOrWhiteSpace(context.User.Identity.Name) ? null : context.User.Identity.Name,
+                    http_method = context.Request.HttpMethod,
+                    url = context.Request.Url,
+                    url_referrer = context.Request.UrlReferrer,
+                    user_agent = context.Request.UserAgent,
+                    user_host_address = context.Request.UserHostAddress,
+                    user_host_name = context.Request.UserHostName,
+                    authentication_type = string.IsNullOrWhiteSpace(context.User.Identity.AuthenticationType) ? null : context.User.Identity.AuthenticationType,
+                    request_headers = headers.Count > 0 ? headers : null,
+                    form_params = formParams.Count > 0 ? formParams : null
+                };
             }
 
             return loggingEventModel;
@@ -203,20 +223,20 @@
 
         private void enqueue(LoggingEvent loggingEvent)
         {
-            lock (lockObject)
+            lock (_lockObject)
             {
                 Debug.WriteLine("Enqued " + loggingEvent.MessageObject);
-                pendingTasks.Enqueue(loggingEvent);
+                _queue.Enqueue(createLoggingEventModel(loggingEvent));
             }
         }
 
-        private bool deQueue(out LoggingEvent loggingEvent)
+        private bool deQueue(out LoggingEventModel loggingEvent)
         {
-            lock (lockObject)
+            lock (_lockObject)
             {
-                if (pendingTasks.Count > 0)
+                if (_queue.Count > 0)
                 {
-                    loggingEvent = pendingTasks.Dequeue();
+                    loggingEvent = _queue.Dequeue();
                     return true;
                 }
 
@@ -230,11 +250,11 @@
             //set the OnClosing flag to true, so that
             //AppendLoggingEvents would know it is time to wrap up
             //whatever it is doing
-            onClosing = true;
+            _onClosing = true;
 
             //wait till we receive signal from manualResetEvent
             //which is signalled from AppendLoggingEvents
-            manualResetEvent.WaitOne(TimeSpan.FromSeconds(5));
+            _manualResetEvent.WaitOne(TimeSpan.FromSeconds(5));
             //manualResetEvent.WaitOne();
 
             base.OnClose();

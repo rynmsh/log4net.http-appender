@@ -12,6 +12,7 @@ Logging event sent in batched collection to service url
 
 ```
 {
+	session_id: String,
 	user: loggingEvent.Identity,
 	logger: loggingEvent.LoggerName,
 	level: loggingEvent.Level.Name.ToLower(),
@@ -27,10 +28,14 @@ Logging event sent in batched collection to service url
         http_method: context.Request.HttpMethod,
         current_user: string.IsNullOrWhiteSpace(context.User.Identity.Name) ? null : context.User.Identity.Name,
         authentication_type: string.IsNullOrWhiteSpace(context.User.Identity.AuthenticationType) ? null : context.User.Identity.AuthenticationType,
-        request_headers (only not empty): {
-			key: key,
-			value: values
-		}
+        request_headers: [{
+			key: String,
+			value: String
+		}],
+		form_params: [{
+			key: String,
+			value: String
+		}]
 	}
 }
 ```
@@ -56,6 +61,9 @@ Configuration
 
   <!-- Optional: Maximum number of events to submit per processing round. Default's to 40 -->
   <BatchSleepTime value="200" />
+
+  <!-- Optional: Attach request headers and form values to http logging data. Default's to error,fatal,warn -->
+  <LogHttpForLevels value="error,fatal,warn" />
 
   <layout type="log4net.Layout.PatternLayout">
     <param name="ConversionPattern" value="%date [%identity] %-5level %logger - %message%newline" />
