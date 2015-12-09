@@ -8,7 +8,7 @@ Thread sleeps after processing for 200ms then rechecks the queue.
 
 context = HttpContext.Current when context for error log level
 
-Logging event sent in batched collection to service url
+Logging event sent in batched collection to service url, the project key and environment values will be headers (X-ProjectKey, X-Environment)
 
 ```
 {
